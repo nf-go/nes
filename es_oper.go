@@ -21,23 +21,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"nfgo.ga/nfgo/nutil/ntemplate"
 )
 
 // ESOper -
 type ESOper interface {
-	ESAPI() esapi.API
+	ESClient() *Client
 	Count(ctx context.Context, query string, index ...string) (int64, error)
 	CountTemplate(ctx context.Context, t *TemplateParam, index ...string) (int64, error)
-	Search(ctx context.Context, model interface{}, query string, index ...string) (interface{}, error)
-	SearchTemplate(ctx context.Context, model interface{}, t *TemplateParam, index ...string) (interface{}, error)
+	Search(ctx context.Context, model interface{}, query string, index string, opts ...func(*SearchRequest)) (interface{}, error)
+	SearchTemplate(ctx context.Context, model interface{}, t *TemplateParam, index string, opts ...func(*SearchRequest)) (interface{}, error)
+	SearchByScrollID(ctx context.Context, model interface{}, scrollID string, index string, opts ...func(*ScrollRequest)) (interface{}, error)
 }
 
 // NewESOper -
-func NewESOper(api esapi.API) ESOper {
+func NewESOper(client *Client) ESOper {
 	return &esOperImpl{
-		api: api,
+		client: client,
 	}
 }
 
@@ -56,19 +56,15 @@ func (t *TemplateParam) execute() (string, error) {
 }
 
 type esOperImpl struct {
-	api esapi.API
+	client *Client
 }
 
-func (e *esOperImpl) ESAPI() esapi.API {
-	return e.api
-}
-
-func newRespErr(resp *esapi.Response) error {
-	return fmt.Errorf("esapi's response status indicates failure: %s, %s", resp.Status(), resp.String())
+func (e *esOperImpl) ESClient() *Client {
+	return e.client
 }
 
 func (e *esOperImpl) Count(ctx context.Context, query string, index ...string) (int64, error) {
-	api := e.api
+	api := e.client
 	resp, err := api.Count(
 		api.Count.WithContext(ctx),
 		api.Count.WithIndex(index...),
@@ -97,35 +93,55 @@ func (e *esOperImpl) CountTemplate(ctx context.Context, t *TemplateParam, index 
 	return e.Count(ctx, query, index...)
 }
 
-func (e *esOperImpl) Search(ctx context.Context, model interface{}, query string, index ...string) (interface{}, error) {
-	api := e.api
-	resp, err := api.Search(
-		api.Search.WithContext(ctx),
-		api.Search.WithIndex(index...),
-		api.Search.WithBody(strings.NewReader(query)),
-		api.Search.WithTrackTotalHits(true),
-		api.Search.WithScroll(time.Minute*5),
-	)
+func (e *esOperImpl) Search(ctx context.Context, model interface{}, query string, index string, opts ...func(*SearchRequest)) (interface{}, error) {
+	api := e.client
+	o := append([]func(*SearchRequest){api.Search.WithContext(ctx),
+		api.Search.WithIndex(index),
+		api.Search.WithBody(strings.NewReader(query))}, opts...)
+	resp, err := api.Search(o...)
 	if err != nil {
 		return nil, err
 	}
 
-	defer resp.Body.Close()
-	if resp.IsError() {
-		return nil, newRespErr(resp)
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(model); err != nil {
+	if err := unmarshallResponse(resp, model); err != nil {
 		return nil, err
 	}
-
 	return model, nil
 }
 
-func (e *esOperImpl) SearchTemplate(ctx context.Context, model interface{}, t *TemplateParam, index ...string) (interface{}, error) {
+func (e *esOperImpl) SearchTemplate(ctx context.Context, model interface{}, t *TemplateParam, index string, opts ...func(*SearchRequest)) (interface{}, error) {
 	query, err := t.execute()
 	if err != nil {
 		return 0, err
 	}
-	return e.Search(ctx, model, query, index...)
+	return e.Search(ctx, model, query, index, opts...)
+}
+
+func (e *esOperImpl) SearchByScrollID(ctx context.Context, model interface{}, scrollID string, index string, opts ...func(*ScrollRequest)) (interface{}, error) {
+	api := e.client
+	o := append([]func(*ScrollRequest){api.Scroll.WithContext(ctx),
+		api.Scroll.WithScrollID(scrollID),
+		api.Scroll.WithScroll(5 * time.Minute)}, opts...)
+	resp, err := api.Scroll(o...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := unmarshallResponse(resp, model); err != nil {
+		return nil, err
+	}
+	return model, nil
+}
+
+func unmarshallResponse(resp *Response, dest interface{}) error {
+	defer resp.Body.Close()
+	if resp.IsError() {
+		return newRespErr(resp)
+	}
+	return json.NewDecoder(resp.Body).Decode(dest)
+}
+
+func newRespErr(resp *Response) error {
+	return fmt.Errorf("esapi's response status indicates failure: %s, %s", resp.Status(), resp.String())
 }

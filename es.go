@@ -20,6 +20,18 @@ import (
 	"nfgo.ga/nfgo/nlog"
 )
 
+// Client represents the Elasticsearch client.
+type Client = es.Client
+
+// SearchRequest -
+type SearchRequest = esapi.SearchRequest
+
+// ScrollRequest -
+type ScrollRequest = esapi.ScrollRequest
+
+// Response -
+type Response = esapi.Response
+
 // ESConfig -
 type ESConfig struct {
 	Addrs    []string `yaml:"addrs"`
@@ -27,23 +39,19 @@ type ESConfig struct {
 	Password string   `yaml:"password"`
 }
 
-// NewESAPI -
-func NewESAPI(config *ESConfig) (*esapi.API, error) {
+// NewESClient -
+func NewESClient(config *ESConfig) (*Client, error) {
 	c := es.Config{
 		Addresses: config.Addrs,
 		Username:  config.Username,
 		Password:  config.Password,
 	}
-	client, err := es.NewClient(c)
-	if err != nil {
-		return nil, err
-	}
-	return client.API, nil
+	return es.NewClient(c)
 }
 
-// MustNewESAPI -
-func MustNewESAPI(config *ESConfig) *esapi.API {
-	api, err := NewESAPI(config)
+// MustNewESClient -
+func MustNewESClient(config *ESConfig) *Client {
+	api, err := NewESClient(config)
 	if err != nil {
 		nlog.Fatal("fail to create esapi: ", err)
 	}
