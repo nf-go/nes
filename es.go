@@ -23,6 +23,9 @@ import (
 // Client represents the Elasticsearch client.
 type Client = es.Client
 
+// IndexRequest -
+type IndexRequest = esapi.IndexRequest
+
 // SearchRequest -
 type SearchRequest = esapi.SearchRequest
 

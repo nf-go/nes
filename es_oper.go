@@ -15,6 +15,7 @@
 package nes
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -27,6 +28,13 @@ import (
 // ESOper -
 type ESOper interface {
 	ESClient() *Client
+
+	Index(ctx context.Context, index string, documentID string, obj interface{}) error
+
+	Delete(ctx context.Context, documentID string, index string) error
+	DeleteByQuery(ctx context.Context, query string, index ...string) error
+	DeleteByQueryTemplate(ctx context.Context, t *TemplateParam, index ...string) error
+
 	Count(ctx context.Context, query string, index ...string) (int64, error)
 	CountTemplate(ctx context.Context, t *TemplateParam, index ...string) (int64, error)
 	Search(ctx context.Context, model interface{}, query string, index string, opts ...func(*SearchRequest)) (interface{}, error)
@@ -61,6 +69,64 @@ type esOperImpl struct {
 
 func (e *esOperImpl) ESClient() *Client {
 	return e.client
+}
+
+func (e *esOperImpl) Index(ctx context.Context, index string, documentID string, obj interface{}) error {
+	body := &bytes.Buffer{}
+	if err := json.NewEncoder(body).Encode(obj); err != nil {
+		return err
+	}
+
+	req := IndexRequest{
+		Index:      index,
+		DocumentID: documentID,
+		Body:       body,
+	}
+
+	resp, err := req.Do(ctx, e.client)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.IsError() {
+		return newRespErr(resp)
+	}
+
+	return nil
+}
+
+func (e *esOperImpl) Delete(ctx context.Context, documentID string, index string) error {
+	api := e.client
+	resp, err := api.Delete(index, documentID, api.Delete.WithContext(ctx))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.IsError() {
+		return newRespErr(resp)
+	}
+	return nil
+}
+
+func (e *esOperImpl) DeleteByQuery(ctx context.Context, query string, index ...string) error {
+	api := e.client
+	resp, err := api.DeleteByQuery(index, strings.NewReader(query), api.DeleteByQuery.WithContext(ctx))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.IsError() {
+		return newRespErr(resp)
+	}
+	return nil
+}
+
+func (e *esOperImpl) DeleteByQueryTemplate(ctx context.Context, t *TemplateParam, index ...string) error {
+	query, err := t.execute()
+	if err != nil {
+		return err
+	}
+	return e.DeleteByQuery(ctx, query, index...)
 }
 
 func (e *esOperImpl) Count(ctx context.Context, query string, index ...string) (int64, error) {
