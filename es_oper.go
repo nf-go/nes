@@ -35,6 +35,9 @@ type ESOper interface {
 	DeleteByQuery(ctx context.Context, query string, index ...string) error
 	DeleteByQueryTemplate(ctx context.Context, t *TemplateParam, index ...string) error
 
+	UpdateByQuery(ctx context.Context, query string, index ...string) error
+	UpdateByQueryTemplate(ctx context.Context, t *TemplateParam, index ...string) error
+
 	Count(ctx context.Context, query string, index ...string) (int64, error)
 	CountTemplate(ctx context.Context, t *TemplateParam, index ...string) (int64, error)
 	Search(ctx context.Context, model interface{}, query string, index string, opts ...func(*SearchRequest)) (interface{}, error)
@@ -127,6 +130,30 @@ func (e *esOperImpl) DeleteByQueryTemplate(ctx context.Context, t *TemplateParam
 		return err
 	}
 	return e.DeleteByQuery(ctx, query, index...)
+}
+
+func (e *esOperImpl) UpdateByQuery(ctx context.Context, query string, index ...string) error {
+	api := e.client
+	resp, err := api.UpdateByQuery(index,
+		api.UpdateByQuery.WithBody(strings.NewReader(query)),
+		api.UpdateByQuery.WithContext(ctx),
+	)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.IsError() {
+		return newRespErr(resp)
+	}
+	return nil
+}
+
+func (e *esOperImpl) UpdateByQueryTemplate(ctx context.Context, t *TemplateParam, index ...string) error {
+	query, err := t.execute()
+	if err != nil {
+		return err
+	}
+	return e.UpdateByQuery(ctx, query, index...)
 }
 
 func (e *esOperImpl) Count(ctx context.Context, query string, index ...string) (int64, error) {
