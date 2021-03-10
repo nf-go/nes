@@ -26,11 +26,23 @@ type Client = es.Client
 // IndexRequest -
 type IndexRequest = esapi.IndexRequest
 
+// DeleteRequest -
+type DeleteRequest = esapi.DeleteRequest
+
 // SearchRequest -
 type SearchRequest = esapi.SearchRequest
 
 // ScrollRequest -
 type ScrollRequest = esapi.ScrollRequest
+
+// CountRequest -
+type CountRequest = esapi.CountRequest
+
+// UpdateByQueryRequest -
+type UpdateByQueryRequest = esapi.UpdateByQueryRequest
+
+// DeleteByQueryRequest -
+type DeleteByQueryRequest = esapi.DeleteByQueryRequest
 
 // Response -
 type Response = esapi.Response
