@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"nfgo.ga/nfgo/nlog"
 	"nfgo.ga/nfgo/nutil/ntemplate"
 )
 
@@ -91,7 +92,7 @@ func (e *esOperImpl) Bulk(ctx context.Context, index string, writeReqBody func(c
 		return err
 	}
 	o := append([]func(*BulkRequest){api.Bulk.WithIndex(index), api.Bulk.WithContext(ctx)}, opts...)
-	resp, err := api.Bulk(bytes.NewReader(buf.Bytes()), o...)
+	resp, err := api.Bulk(&buf, o...)
 	if err != nil {
 		return err
 	}
@@ -137,6 +138,9 @@ func (e *esOperImpl) Delete(ctx context.Context, documentID string, index string
 }
 
 func (e *esOperImpl) DeleteByQuery(ctx context.Context, query string, indexes []string, opts ...func(*DeleteByQueryRequest)) error {
+	if nlog.IsLevelEnabled(nlog.DebugLevel) {
+		nlog.Logger(ctx).Debugf("nes es oper DeleteByQuery: the delete query is %s", query)
+	}
 	api := e.client
 	o := append([]func(*DeleteByQueryRequest){api.DeleteByQuery.WithContext(ctx)}, opts...)
 	resp, err := api.DeleteByQuery(indexes, strings.NewReader(query), o...)
@@ -159,6 +163,9 @@ func (e *esOperImpl) DeleteByQueryTemplate(ctx context.Context, t *TemplateParam
 }
 
 func (e *esOperImpl) UpdateByQuery(ctx context.Context, query string, indexes []string, opts ...func(*UpdateByQueryRequest)) error {
+	if nlog.IsLevelEnabled(nlog.DebugLevel) {
+		nlog.Logger(ctx).Debugf("nes es oper UpdateByQuery: the update query is %s", query)
+	}
 	api := e.client
 	o := append([]func(*UpdateByQueryRequest){api.UpdateByQuery.WithBody(strings.NewReader(query)), api.UpdateByQuery.WithContext(ctx)}, opts...)
 	resp, err := api.UpdateByQuery(indexes, o...)
@@ -181,6 +188,9 @@ func (e *esOperImpl) UpdateByQueryTemplate(ctx context.Context, t *TemplateParam
 }
 
 func (e *esOperImpl) Count(ctx context.Context, query string, indexes []string, opts ...func(*CountRequest)) (int64, error) {
+	if nlog.IsLevelEnabled(nlog.DebugLevel) {
+		nlog.Logger(ctx).Debugf("nes es oper Count: the count query is %s", query)
+	}
 	api := e.client
 	o := append([]func(*CountRequest){api.Count.WithContext(ctx), api.Count.WithIndex(indexes...), api.Count.WithBody(strings.NewReader(query))}, opts...)
 	resp, err := api.Count(o...)
@@ -208,6 +218,9 @@ func (e *esOperImpl) CountTemplate(ctx context.Context, t *TemplateParam, indexe
 }
 
 func (e *esOperImpl) Search(ctx context.Context, model interface{}, query string, indexes []string, opts ...func(*SearchRequest)) (interface{}, error) {
+	if nlog.IsLevelEnabled(nlog.DebugLevel) {
+		nlog.Logger(ctx).Debugf("nes es oper Search: the search query is %s", query)
+	}
 	api := e.client
 	o := append([]func(*SearchRequest){api.Search.WithContext(ctx), api.Search.WithIndex(indexes...), api.Search.WithBody(strings.NewReader(query))}, opts...)
 	resp, err := api.Search(o...)
