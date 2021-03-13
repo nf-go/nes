@@ -29,6 +29,11 @@ import (
 type ESOper interface {
 	ESClient() *Client
 
+	// Bulk allows to perform multiple index/update/delete operations in a single request.
+	//
+	// See full documentation at https://www.elastic.co/guide/en/elasticsearch/reference/master/docs-bulk.html.
+	Bulk(ctx context.Context, index string, writeReqBody func(ctx context.Context, buf *bytes.Buffer) error, opts ...func(*BulkRequest)) error
+
 	Index(ctx context.Context, index string, documentID string, obj interface{}, opts ...func(*IndexRequest)) error
 
 	Delete(ctx context.Context, documentID string, index string, opts ...func(*DeleteRequest)) error
@@ -42,7 +47,12 @@ type ESOper interface {
 	CountTemplate(ctx context.Context, t *TemplateParam, indexes []string, opts ...func(*CountRequest)) (int64, error)
 	Search(ctx context.Context, model interface{}, query string, indexes []string, opts ...func(*SearchRequest)) (interface{}, error)
 	SearchTemplate(ctx context.Context, model interface{}, t *TemplateParam, indexes []string, opts ...func(*SearchRequest)) (interface{}, error)
-	SearchByScrollID(ctx context.Context, model interface{}, scrollID string, index string, opts ...func(*ScrollRequest)) (interface{}, error)
+	// Scroll allows to retrieve a large numbers of results from a single search request.
+	//
+	// We no longer recommend using the scroll API for deep pagination.
+	// If you need to preserve the index state while paging through more than 10,000 hits, use the search_after parameter with a point in time (PIT).
+	// See documentation at https://www.elastic.co/guide/en/elasticsearch/reference/master/paginate-search-results.html#scroll-search-results
+	SearchByScrollID(ctx context.Context, model interface{}, scrollID string, opts ...func(*ScrollRequest)) (interface{}, error)
 }
 
 // NewESOper -
@@ -72,6 +82,24 @@ type esOperImpl struct {
 
 func (e *esOperImpl) ESClient() *Client {
 	return e.client
+}
+
+func (e *esOperImpl) Bulk(ctx context.Context, index string, writeReqBody func(ctx context.Context, buf *bytes.Buffer) error, opts ...func(*BulkRequest)) error {
+	api := e.client
+	var buf bytes.Buffer
+	if err := writeReqBody(ctx, &buf); err != nil {
+		return err
+	}
+	o := append([]func(*BulkRequest){api.Bulk.WithIndex(index), api.Bulk.WithContext(ctx)}, opts...)
+	resp, err := api.Bulk(bytes.NewReader(buf.Bytes()), o...)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.IsError() {
+		return newRespErr(resp)
+	}
+	return nil
 }
 
 func (e *esOperImpl) Index(ctx context.Context, index string, documentID string, obj interface{}, opts ...func(*IndexRequest)) error {
@@ -201,7 +229,7 @@ func (e *esOperImpl) SearchTemplate(ctx context.Context, model interface{}, t *T
 	return e.Search(ctx, model, query, indexes, opts...)
 }
 
-func (e *esOperImpl) SearchByScrollID(ctx context.Context, model interface{}, scrollID string, index string, opts ...func(*ScrollRequest)) (interface{}, error) {
+func (e *esOperImpl) SearchByScrollID(ctx context.Context, model interface{}, scrollID string, opts ...func(*ScrollRequest)) (interface{}, error) {
 	api := e.client
 	o := append([]func(*ScrollRequest){api.Scroll.WithContext(ctx), api.Scroll.WithScrollID(scrollID), api.Scroll.WithScroll(5 * time.Minute)}, opts...)
 	resp, err := api.Scroll(o...)
