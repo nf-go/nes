@@ -23,6 +23,7 @@ import (
 // Client represents the Elasticsearch client.
 type Client = es.Client
 
+// BulkRequest -
 type BulkRequest = esapi.BulkRequest
 
 // IndexRequest -
