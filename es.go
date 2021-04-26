@@ -20,8 +20,20 @@ import (
 	"nfgo.ga/nfgo/nlog"
 )
 
+const (
+	// DefaultIndexMaxResultWindow - The default value of from + size for searches to this index.
+	// Defaults to 10000.
+	DefaultIndexMaxResultWindow = 10000
+)
+
 // Client represents the Elasticsearch client.
 type Client = es.Client
+
+// GetRequest -
+type GetRequest = esapi.GetRequest
+
+// MgetRequest -
+type MgetRequest = esapi.MgetRequest
 
 // BulkRequest -
 type BulkRequest = esapi.BulkRequest

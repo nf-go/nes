@@ -30,14 +30,18 @@ import (
 type ESOper interface {
 	ESClient() *Client
 
+	Get(ctx context.Context, model interface{}, index string, docID string, opts ...func(*GetRequest)) (interface{}, error)
+
+	MultiGet(ctx context.Context, model interface{}, index string, docIDs []string, opts ...func(*MgetRequest)) (interface{}, error)
+
 	// Bulk allows to perform multiple index/update/delete operations in a single request.
 	//
 	// See full documentation at https://www.elastic.co/guide/en/elasticsearch/reference/master/docs-bulk.html.
 	Bulk(ctx context.Context, index string, writeReqBody func(ctx context.Context, buf *bytes.Buffer) error, opts ...func(*BulkRequest)) error
 
-	Index(ctx context.Context, index string, documentID string, obj interface{}, opts ...func(*IndexRequest)) error
+	Index(ctx context.Context, index string, docID string, obj interface{}, opts ...func(*IndexRequest)) error
 
-	Delete(ctx context.Context, documentID string, index string, opts ...func(*DeleteRequest)) error
+	Delete(ctx context.Context, docID string, index string, opts ...func(*DeleteRequest)) error
 	DeleteByQuery(ctx context.Context, query string, indexes []string, opts ...func(*DeleteByQueryRequest)) error
 	DeleteByQueryTemplate(ctx context.Context, t *TemplateParam, indexes []string, opts ...func(*DeleteByQueryRequest)) error
 
@@ -77,12 +81,47 @@ func (t *TemplateParam) execute() (string, error) {
 	return t.Template.ExecuteTemplate(t.Name, t.Data)
 }
 
+type mgetRequestBody struct {
+	IDs []string `json:"ids"`
+}
+
 type esOperImpl struct {
 	client *Client
 }
 
 func (e *esOperImpl) ESClient() *Client {
 	return e.client
+}
+
+func (e *esOperImpl) Get(ctx context.Context, model interface{}, index string, docID string, opts ...func(*GetRequest)) (interface{}, error) {
+	api := e.client
+	o := append([]func(*GetRequest){api.Get.WithContext(ctx)}, opts...)
+	resp, err := api.Get(index, docID, o...)
+	if err != nil {
+		return nil, err
+	}
+	if err := unmarshallResponse(resp, model); err != nil {
+		return nil, err
+	}
+	return model, nil
+}
+
+func (e *esOperImpl) MultiGet(ctx context.Context, model interface{}, index string, docIDs []string, opts ...func(*MgetRequest)) (interface{}, error) {
+	api := e.client
+	o := append([]func(*MgetRequest){api.Mget.WithContext(ctx), api.Mget.WithIndex(index)}, opts...)
+	buf := &bytes.Buffer{}
+	err := json.NewEncoder(buf).Encode(&mgetRequestBody{IDs: docIDs})
+	if err != nil {
+		return nil, err
+	}
+	resp, err := api.Mget(buf, o...)
+	if err != nil {
+		return nil, err
+	}
+	if err := unmarshallResponse(resp, model); err != nil {
+		return nil, err
+	}
+	return model, nil
 }
 
 func (e *esOperImpl) Bulk(ctx context.Context, index string, writeReqBody func(ctx context.Context, buf *bytes.Buffer) error, opts ...func(*BulkRequest)) error {
@@ -103,14 +142,14 @@ func (e *esOperImpl) Bulk(ctx context.Context, index string, writeReqBody func(c
 	return nil
 }
 
-func (e *esOperImpl) Index(ctx context.Context, index string, documentID string, obj interface{}, opts ...func(*IndexRequest)) error {
+func (e *esOperImpl) Index(ctx context.Context, index string, docID string, obj interface{}, opts ...func(*IndexRequest)) error {
 	body := &bytes.Buffer{}
 	if err := json.NewEncoder(body).Encode(obj); err != nil {
 		return err
 	}
 
 	api := e.client
-	o := append([]func(*IndexRequest){api.API.Index.WithContext(ctx), api.API.Index.WithDocumentID(documentID)}, opts...)
+	o := append([]func(*IndexRequest){api.API.Index.WithContext(ctx), api.API.Index.WithDocumentID(docID)}, opts...)
 	resp, err := api.Index(index, body, o...)
 	if err != nil {
 		return err
@@ -123,10 +162,10 @@ func (e *esOperImpl) Index(ctx context.Context, index string, documentID string,
 	return nil
 }
 
-func (e *esOperImpl) Delete(ctx context.Context, documentID string, index string, opts ...func(*DeleteRequest)) error {
+func (e *esOperImpl) Delete(ctx context.Context, docID string, index string, opts ...func(*DeleteRequest)) error {
 	api := e.client
 	o := append([]func(*DeleteRequest){api.Delete.WithContext(ctx)}, opts...)
-	resp, err := api.Delete(index, documentID, o...)
+	resp, err := api.Delete(index, docID, o...)
 	if err != nil {
 		return err
 	}
