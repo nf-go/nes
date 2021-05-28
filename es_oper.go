@@ -30,18 +30,19 @@ import (
 type ESOper interface {
 	ESClient() *Client
 
-	Get(ctx context.Context, model interface{}, index string, docID string, opts ...func(*GetRequest)) (interface{}, error)
+	Get(ctx context.Context, model interface{}, index string, id string, opts ...func(*GetRequest)) (interface{}, error)
 
-	MultiGet(ctx context.Context, model interface{}, index string, docIDs []string, opts ...func(*MgetRequest)) (interface{}, error)
+	MultiGet(ctx context.Context, model interface{}, index string, ids []string, opts ...func(*MgetRequest)) (interface{}, error)
 
 	// Bulk allows to perform multiple index/update/delete operations in a single request.
 	//
 	// See full documentation at https://www.elastic.co/guide/en/elasticsearch/reference/master/docs-bulk.html.
 	Bulk(ctx context.Context, index string, writeReqBody func(ctx context.Context, buf *bytes.Buffer) error, opts ...func(*BulkRequest)) error
 
-	Index(ctx context.Context, index string, docID string, obj interface{}, opts ...func(*IndexRequest)) error
+	Create(ctx context.Context, index string, id string, obj interface{}, opts ...func(*CreateRequest)) error
+	Index(ctx context.Context, index string, id string, obj interface{}, opts ...func(*IndexRequest)) error
 
-	Delete(ctx context.Context, docID string, index string, opts ...func(*DeleteRequest)) error
+	Delete(ctx context.Context, id string, index string, opts ...func(*DeleteRequest)) error
 	DeleteByQuery(ctx context.Context, query string, indexes []string, opts ...func(*DeleteByQueryRequest)) error
 	DeleteByQueryTemplate(ctx context.Context, t *TemplateParam, indexes []string, opts ...func(*DeleteByQueryRequest)) error
 
@@ -62,7 +63,7 @@ type ESOper interface {
 
 // NewESOper -
 func NewESOper(client *Client) ESOper {
-	return &esOperImpl{
+	return &esOper{
 		client: client,
 	}
 }
@@ -85,18 +86,18 @@ type mgetRequestBody struct {
 	IDs []string `json:"ids"`
 }
 
-type esOperImpl struct {
+type esOper struct {
 	client *Client
 }
 
-func (e *esOperImpl) ESClient() *Client {
+func (e *esOper) ESClient() *Client {
 	return e.client
 }
 
-func (e *esOperImpl) Get(ctx context.Context, model interface{}, index string, docID string, opts ...func(*GetRequest)) (interface{}, error) {
+func (e *esOper) Get(ctx context.Context, model interface{}, index string, id string, opts ...func(*GetRequest)) (interface{}, error) {
 	api := e.client
 	o := append([]func(*GetRequest){api.Get.WithContext(ctx)}, opts...)
-	resp, err := api.Get(index, docID, o...)
+	resp, err := api.Get(index, id, o...)
 	if err != nil {
 		return nil, err
 	}
@@ -106,11 +107,11 @@ func (e *esOperImpl) Get(ctx context.Context, model interface{}, index string, d
 	return model, nil
 }
 
-func (e *esOperImpl) MultiGet(ctx context.Context, model interface{}, index string, docIDs []string, opts ...func(*MgetRequest)) (interface{}, error) {
+func (e *esOper) MultiGet(ctx context.Context, model interface{}, index string, ids []string, opts ...func(*MgetRequest)) (interface{}, error) {
 	api := e.client
 	o := append([]func(*MgetRequest){api.Mget.WithContext(ctx), api.Mget.WithIndex(index)}, opts...)
 	buf := &bytes.Buffer{}
-	err := json.NewEncoder(buf).Encode(&mgetRequestBody{IDs: docIDs})
+	err := json.NewEncoder(buf).Encode(&mgetRequestBody{IDs: ids})
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +125,7 @@ func (e *esOperImpl) MultiGet(ctx context.Context, model interface{}, index stri
 	return model, nil
 }
 
-func (e *esOperImpl) Bulk(ctx context.Context, index string, writeReqBody func(ctx context.Context, buf *bytes.Buffer) error, opts ...func(*BulkRequest)) error {
+func (e *esOper) Bulk(ctx context.Context, index string, writeReqBody func(ctx context.Context, buf *bytes.Buffer) error, opts ...func(*BulkRequest)) error {
 	api := e.client
 	var buf bytes.Buffer
 	if err := writeReqBody(ctx, &buf); err != nil {
@@ -142,14 +143,32 @@ func (e *esOperImpl) Bulk(ctx context.Context, index string, writeReqBody func(c
 	return nil
 }
 
-func (e *esOperImpl) Index(ctx context.Context, index string, docID string, obj interface{}, opts ...func(*IndexRequest)) error {
+func (e *esOper) Create(ctx context.Context, index string, id string, obj interface{}, opts ...func(*CreateRequest)) error {
+	body := &bytes.Buffer{}
+	if err := json.NewEncoder(body).Encode(obj); err != nil {
+		return err
+	}
+	api := e.client
+	o := append([]func(*CreateRequest){api.API.Create.WithContext(ctx)}, opts...)
+	resp, err := api.Create(index, id, body, o...)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.IsError() {
+		return newRespErr(resp)
+	}
+	return nil
+}
+
+func (e *esOper) Index(ctx context.Context, index string, id string, obj interface{}, opts ...func(*IndexRequest)) error {
 	body := &bytes.Buffer{}
 	if err := json.NewEncoder(body).Encode(obj); err != nil {
 		return err
 	}
 
 	api := e.client
-	o := append([]func(*IndexRequest){api.API.Index.WithContext(ctx), api.API.Index.WithDocumentID(docID)}, opts...)
+	o := append([]func(*IndexRequest){api.API.Index.WithContext(ctx), api.API.Index.WithDocumentID(id)}, opts...)
 	resp, err := api.Index(index, body, o...)
 	if err != nil {
 		return err
@@ -162,10 +181,21 @@ func (e *esOperImpl) Index(ctx context.Context, index string, docID string, obj 
 	return nil
 }
 
-func (e *esOperImpl) Delete(ctx context.Context, docID string, index string, opts ...func(*DeleteRequest)) error {
+type updateDoc struct {
+	Doc interface{} `json:"doc"`
+}
+
+func (e *esOper) Update(ctx context.Context, index string, id string, obj interface{}, opts ...func(*UpdateRequest)) error {
+	body := &bytes.Buffer{}
+	err := json.NewEncoder(body).Encode(&updateDoc{
+		Doc: obj,
+	})
+	if err != nil {
+		return err
+	}
 	api := e.client
-	o := append([]func(*DeleteRequest){api.Delete.WithContext(ctx)}, opts...)
-	resp, err := api.Delete(index, docID, o...)
+	o := append([]func(*UpdateRequest){api.Update.WithContext(ctx)}, opts...)
+	resp, err := api.Update(index, id, body, o...)
 	if err != nil {
 		return err
 	}
@@ -176,7 +206,21 @@ func (e *esOperImpl) Delete(ctx context.Context, docID string, index string, opt
 	return nil
 }
 
-func (e *esOperImpl) DeleteByQuery(ctx context.Context, query string, indexes []string, opts ...func(*DeleteByQueryRequest)) error {
+func (e *esOper) Delete(ctx context.Context, id string, index string, opts ...func(*DeleteRequest)) error {
+	api := e.client
+	o := append([]func(*DeleteRequest){api.Delete.WithContext(ctx)}, opts...)
+	resp, err := api.Delete(index, id, o...)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.IsError() {
+		return newRespErr(resp)
+	}
+	return nil
+}
+
+func (e *esOper) DeleteByQuery(ctx context.Context, query string, indexes []string, opts ...func(*DeleteByQueryRequest)) error {
 	if nlog.IsLevelEnabled(nlog.DebugLevel) {
 		nlog.Logger(ctx).Debugf("nes es oper DeleteByQuery: the delete query is %s", query)
 	}
@@ -193,7 +237,7 @@ func (e *esOperImpl) DeleteByQuery(ctx context.Context, query string, indexes []
 	return nil
 }
 
-func (e *esOperImpl) DeleteByQueryTemplate(ctx context.Context, t *TemplateParam, indexes []string, opts ...func(*DeleteByQueryRequest)) error {
+func (e *esOper) DeleteByQueryTemplate(ctx context.Context, t *TemplateParam, indexes []string, opts ...func(*DeleteByQueryRequest)) error {
 	query, err := t.execute()
 	if err != nil {
 		return err
@@ -201,7 +245,7 @@ func (e *esOperImpl) DeleteByQueryTemplate(ctx context.Context, t *TemplateParam
 	return e.DeleteByQuery(ctx, query, indexes, opts...)
 }
 
-func (e *esOperImpl) UpdateByQuery(ctx context.Context, query string, indexes []string, opts ...func(*UpdateByQueryRequest)) error {
+func (e *esOper) UpdateByQuery(ctx context.Context, query string, indexes []string, opts ...func(*UpdateByQueryRequest)) error {
 	if nlog.IsLevelEnabled(nlog.DebugLevel) {
 		nlog.Logger(ctx).Debugf("nes es oper UpdateByQuery: the update query is %s", query)
 	}
@@ -218,7 +262,7 @@ func (e *esOperImpl) UpdateByQuery(ctx context.Context, query string, indexes []
 	return nil
 }
 
-func (e *esOperImpl) UpdateByQueryTemplate(ctx context.Context, t *TemplateParam, indexes []string, opts ...func(*UpdateByQueryRequest)) error {
+func (e *esOper) UpdateByQueryTemplate(ctx context.Context, t *TemplateParam, indexes []string, opts ...func(*UpdateByQueryRequest)) error {
 	query, err := t.execute()
 	if err != nil {
 		return err
@@ -226,7 +270,7 @@ func (e *esOperImpl) UpdateByQueryTemplate(ctx context.Context, t *TemplateParam
 	return e.UpdateByQuery(ctx, query, indexes, opts...)
 }
 
-func (e *esOperImpl) Count(ctx context.Context, query string, indexes []string, opts ...func(*CountRequest)) (int64, error) {
+func (e *esOper) Count(ctx context.Context, query string, indexes []string, opts ...func(*CountRequest)) (int64, error) {
 	if nlog.IsLevelEnabled(nlog.DebugLevel) {
 		nlog.Logger(ctx).Debugf("nes es oper Count: the count query is %s", query)
 	}
@@ -248,7 +292,7 @@ func (e *esOperImpl) Count(ctx context.Context, query string, indexes []string, 
 	return int64(m["count"].(float64)), nil
 }
 
-func (e *esOperImpl) CountTemplate(ctx context.Context, t *TemplateParam, indexes []string, opts ...func(*CountRequest)) (int64, error) {
+func (e *esOper) CountTemplate(ctx context.Context, t *TemplateParam, indexes []string, opts ...func(*CountRequest)) (int64, error) {
 	query, err := t.execute()
 	if err != nil {
 		return 0, err
@@ -256,7 +300,7 @@ func (e *esOperImpl) CountTemplate(ctx context.Context, t *TemplateParam, indexe
 	return e.Count(ctx, query, indexes, opts...)
 }
 
-func (e *esOperImpl) Search(ctx context.Context, model interface{}, query string, indexes []string, opts ...func(*SearchRequest)) (interface{}, error) {
+func (e *esOper) Search(ctx context.Context, model interface{}, query string, indexes []string, opts ...func(*SearchRequest)) (interface{}, error) {
 	if nlog.IsLevelEnabled(nlog.DebugLevel) {
 		nlog.Logger(ctx).Debugf("nes es oper Search: the search query is %s", query)
 	}
@@ -273,7 +317,7 @@ func (e *esOperImpl) Search(ctx context.Context, model interface{}, query string
 	return model, nil
 }
 
-func (e *esOperImpl) SearchTemplate(ctx context.Context, model interface{}, t *TemplateParam, indexes []string, opts ...func(*SearchRequest)) (interface{}, error) {
+func (e *esOper) SearchTemplate(ctx context.Context, model interface{}, t *TemplateParam, indexes []string, opts ...func(*SearchRequest)) (interface{}, error) {
 	query, err := t.execute()
 	if err != nil {
 		return 0, err
@@ -281,7 +325,7 @@ func (e *esOperImpl) SearchTemplate(ctx context.Context, model interface{}, t *T
 	return e.Search(ctx, model, query, indexes, opts...)
 }
 
-func (e *esOperImpl) SearchByScrollID(ctx context.Context, model interface{}, scrollID string, opts ...func(*ScrollRequest)) (interface{}, error) {
+func (e *esOper) SearchByScrollID(ctx context.Context, model interface{}, scrollID string, opts ...func(*ScrollRequest)) (interface{}, error) {
 	api := e.client
 	o := append([]func(*ScrollRequest){api.Scroll.WithContext(ctx), api.Scroll.WithScrollID(scrollID), api.Scroll.WithScroll(5 * time.Minute)}, opts...)
 	resp, err := api.Scroll(o...)

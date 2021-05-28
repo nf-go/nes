@@ -29,6 +29,12 @@ const (
 // Client represents the Elasticsearch client.
 type Client = es.Client
 
+// CreateRequest -
+type CreateRequest = esapi.CreateRequest
+
+// UpdateRequest -
+type UpdateRequest = esapi.UpdateRequest
+
 // GetRequest -
 type GetRequest = esapi.GetRequest
 
