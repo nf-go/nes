@@ -22,8 +22,8 @@ import (
 	"strings"
 	"time"
 
-	"nfgo.ga/nfgo/nlog"
-	"nfgo.ga/nfgo/nutil/ntemplate"
+	"github.com/nf-go/nfgo/nlog"
+	"github.com/nf-go/nfgo/nutil/ntemplate"
 )
 
 // ESOper -

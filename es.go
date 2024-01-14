@@ -17,7 +17,7 @@ package nes
 import (
 	es "github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esapi"
-	"nfgo.ga/nfgo/nlog"
+	"github.com/nf-go/nfgo/nlog"
 )
 
 const (
