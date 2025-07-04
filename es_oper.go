@@ -136,6 +136,7 @@ func (e *esOper) Bulk(ctx context.Context, index string, writeReqBody func(ctx c
 	if err != nil {
 		return err
 	}
+	//nolint:errcheck
 	defer resp.Body.Close()
 	if resp.IsError() {
 		return newRespErr(resp)
@@ -149,11 +150,12 @@ func (e *esOper) Create(ctx context.Context, index string, id string, obj interf
 		return err
 	}
 	api := e.client
-	o := append([]func(*CreateRequest){api.API.Create.WithContext(ctx)}, opts...)
+	o := append([]func(*CreateRequest){api.Create.WithContext(ctx)}, opts...)
 	resp, err := api.Create(index, id, body, o...)
 	if err != nil {
 		return err
 	}
+	//nolint:errcheck
 	defer resp.Body.Close()
 	if resp.IsError() {
 		return newRespErr(resp)
@@ -168,11 +170,12 @@ func (e *esOper) Index(ctx context.Context, index string, id string, obj interfa
 	}
 
 	api := e.client
-	o := append([]func(*IndexRequest){api.API.Index.WithContext(ctx), api.API.Index.WithDocumentID(id)}, opts...)
+	o := append([]func(*IndexRequest){api.Index.WithContext(ctx), api.Index.WithDocumentID(id)}, opts...)
 	resp, err := api.Index(index, body, o...)
 	if err != nil {
 		return err
 	}
+	//nolint:errcheck
 	defer resp.Body.Close()
 	if resp.IsError() {
 		return newRespErr(resp)
@@ -199,6 +202,7 @@ func (e *esOper) Update(ctx context.Context, index string, id string, obj interf
 	if err != nil {
 		return err
 	}
+	//nolint:errcheck
 	defer resp.Body.Close()
 	if resp.IsError() {
 		return newRespErr(resp)
@@ -213,6 +217,7 @@ func (e *esOper) Delete(ctx context.Context, id string, index string, opts ...fu
 	if err != nil {
 		return err
 	}
+	//nolint:errcheck
 	defer resp.Body.Close()
 	if resp.IsError() {
 		return newRespErr(resp)
@@ -230,6 +235,7 @@ func (e *esOper) DeleteByQuery(ctx context.Context, query string, indexes []stri
 	if err != nil {
 		return err
 	}
+	//nolint:errcheck
 	defer resp.Body.Close()
 	if resp.IsError() {
 		return newRespErr(resp)
@@ -255,6 +261,7 @@ func (e *esOper) UpdateByQuery(ctx context.Context, query string, indexes []stri
 	if err != nil {
 		return err
 	}
+	//nolint:errcheck
 	defer resp.Body.Close()
 	if resp.IsError() {
 		return newRespErr(resp)
@@ -280,6 +287,7 @@ func (e *esOper) Count(ctx context.Context, query string, indexes []string, opts
 	if err != nil {
 		return 0, err
 	}
+	//nolint:errcheck
 	defer resp.Body.Close()
 	if resp.IsError() {
 		return 0, newRespErr(resp)
@@ -340,6 +348,7 @@ func (e *esOper) SearchByScrollID(ctx context.Context, model interface{}, scroll
 }
 
 func unmarshallResponse(resp *Response, dest interface{}) error {
+	//nolint:errcheck
 	defer resp.Body.Close()
 	if resp.IsError() {
 		return newRespErr(resp)
